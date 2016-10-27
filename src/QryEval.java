@@ -46,7 +46,7 @@ public class QryEval {
 		String[] exp = new String[length];
 		int i=0;
 		for(i=0;i<6;i++){
-			exp[i] = "exp3_"+i;
+			exp[i] = "exp4_"+i;
 		}
 //		for(;i<12;i++){
 //			exp[i] = "exp3_"+(i-6);
@@ -226,6 +226,7 @@ public class QryEval {
 				int fbTerms = Integer.parseInt(parameters.get("fbTerms"));
 				double fbMu = Double.parseDouble(parameters.get("fbMu"));
 				double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
+				BufferedReader expandedQueryFile = new BufferedReader(new FileReader("hw3/Exp3-Indri-expansion_5.qryOut"));
 				BufferedReader rankingInput = null;
 				if (fbInitialRankingFile != null && fbInitialRankingFile.length() > 0) {
 					// read a document ranking in trec_eval input format
@@ -241,114 +242,20 @@ public class QryEval {
 					String qid = qLine.substring(0, d);
 					String query = qLine.substring(d + 1);
 					System.out.println("Query " + qLine);
-					if (fbInitialRankingFile != null && fbInitialRankingFile.length() > 0) {
-
-						String file = null;
-						r = new ScoreList();
-
-						for (int i = 0; i < fbDocs; i++) {
-							file = rankingInput.readLine();
-//							System.out.println(file);
-							String[] arr = file.split("\\s+");
-//							System.out.println(arr[2]+" "+arr[3]+":"+arr[4]);
-							r.add(Idx.getInternalDocid(arr[2]), Double.valueOf(arr[4]));
-						}
-						for (int i = 0; i < 100 - fbDocs; i++) {
-							rankingInput.readLine();
-						}
-						// rankingInput.close();
-						// r.sort();
-					} else {
-						// use the query to retrieve documents
-						r = processQuery(query, model);
-					}
-					HashMap<String, Double> map = new HashMap<>();
-					HashMap<String, Long> ctfMap = new HashMap<>();
-					TermVector[] termVector = new TermVector[fbDocs];
-					for (int i = 0; i < fbDocs; i++) {
-						termVector[i] = new TermVector(r.getDocid(i), "body");
-						for (int j = 1; j < termVector[i].stemsLength(); j++) {
-							String term = termVector[i].stemString(j);
-							if (!map.containsKey(term))
-								map.put(term, 0.0);
-							if (!ctfMap.containsKey(term))
-								ctfMap.put(term, termVector[i].totalStemFreq(j));
-						}
-
-					}
-					double cLen = Idx.getSumOfFieldLengths("body");
-					for (Entry<String, Double> e : map.entrySet()) {
-						for (int i = 0; i < fbDocs; i++) {
-							String term = e.getKey();
-							int j = termVector[i].indexOfStem(term);
-							int tf;
-							if (j < 0)
-								tf = 0;
-							else
-								tf = termVector[i].stemFreq(j);
-							long ctf = ctfMap.get(term);
-							double p_t_d = (tf + fbMu * ctf / cLen) / (fbMu + termVector[i].positionsLength());
-							double p_i_d = r.getDocidScore(i);
-//							double score = p_t_d * p_i_d * Math.log(cLen / ctf);
-							double score = p_t_d * p_i_d;
-							if (map.containsKey(term)) {
-								map.put(term, map.get(term) + score);
-							} else
-								map.put(term, score);
-						}
-					}
-					for(Entry<String,Double> e: map.entrySet()){
-						String term = e.getKey();
-						long ctf = ctfMap.get(term);
-						map.put(term, map.get(term)*Math.log(cLen/ctf));
-					}
-					List<Entry<String, Double>> entryList = new ArrayList<>(map.entrySet());
-					Collections.sort(entryList, new Comparator<Entry<String, Double>>() {
-						@Override
-						public int compare(Entry<String, Double> e1, Entry<String, Double> e2) {
-							if (e1.getValue() > e2.getValue())
-								return 1;
-							else
-								return -1;
-						}
-					});
-					StringBuilder expandedQuery = new StringBuilder();
-					expandedQuery.append("#wand (");
-					int i = entryList.size() - 1;
-					List<Entry<String, Double>> termList = new ArrayList<>();
-					while (termList.size() < fbTerms) {
-						Entry<String, Double> e = entryList.get(i--);
-						String term = e.getKey();
-						if (term.contains(".") || term.contains(","))
-							continue;
-						if(e.getValue()==0)
-							break;
-						termList.add(e);
-					}
-					for (i = termList.size() - 1; i >= 0; i--) {
-						Entry<String, Double> e = termList.get(i);
-						if (i != termList.size() - 1)
-							expandedQuery.append(" ");
-						expandedQuery.append(String.format("%.4f", e.getValue()));
-						expandedQuery.append(" ");
-						expandedQuery.append(e.getKey());
-					}
-
-					expandedQuery.append(")\n");
-					String queryWrite = qid + ": " + expandedQuery.toString();
-					System.out.println(queryWrite);
-					// write expanded query to file
-					fw.write(queryWrite);
 					String defaultOp = model.defaultQrySopName();
 					query = defaultOp + "(" + query + ")";
+					String expanded = expandedQueryFile.readLine();
+					int idx = expanded.indexOf(':');
+					
 					query = "#wand(" + fbOrigWeight + " " + query + " " + (1 - fbOrigWeight) + " "
-							+ expandedQuery.toString() + ")";
-					// System.out.println(query);
+							+ expanded.substring(idx+1) + ")";
+					 System.out.println(query);
 					r = processQuery(query, model);
 					// write results to file in trec_eval format
 					writeResults(qid, r);
 				}
 				fw.close();
+				expandedQueryFile.close();
 				if (fbInitialRankingFile != null && fbInitialRankingFile.length() > 0)
 					rankingInput.close();
 			} else {
